@@ -40,3 +40,5 @@ if (( status != 0 || issues != 0 )); then
   echo '::error::Cleanup reported a failure or incomplete coverage. Review the AWS Nuke logs.'
   exit 1
 fi
+
+##
