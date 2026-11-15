@@ -49,6 +49,28 @@ accounts:
       CloudFormationStack:
         - property: Name
           value: aws-sandbox-cleanup-bootstrap
+      # Preserve the default VPC and the components AWS creates for it.
+      EC2VPC:
+        - property: IsDefault
+          value: "true"
+      EC2Subnet:
+        - property: DefaultForAz
+          value: "true"
+      EC2InternetGateway:
+        - property: DefaultVPC
+          value: "true"
+      EC2InternetGatewayAttachment:
+        - property: DefaultVPC
+          value: "true"
+      EC2DHCPOption:
+        - property: DefaultVPC
+          value: "true"
+      EC2DefaultSecurityGroupRule:
+        - property: DefaultVPC
+          value: "true"
+      AthenaWorkGroup:
+        - property: Name
+          value: primary
       IAMOpenIDConnectProvider:
         - type: regex
           value: '^arn:aws:iam::[0-9]{12}:oidc-provider/token\.actions\.githubusercontent\.com$'
