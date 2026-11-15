@@ -1,0 +1,44 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ProtectCleanupRole",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:PassRole"
+      ],
+      "Resource": "arn:aws:iam::*:role/GitHubSandboxCleanup"
+    },
+    {
+      "Sid": "ProtectGitHubProvider",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:RemoveClientIDFromOpenIDConnectProvider",
+        "iam:UpdateOpenIDConnectProviderThumbprint"
+      ],
+      "Resource": "arn:aws:iam::*:oidc-provider/token.actions.githubusercontent.com"
+    },
+    {
+      "Sid": "ProtectAccountControls",
+      "Effect": "Deny",
+      "Action": [
+        "account:DisableRegion",
+        "account:EnableRegion",
+        "iam:CreateAccountAlias",
+        "iam:DeleteAccountAlias",
+        "organizations:CloseAccount",
+        "organizations:LeaveOrganization",
+        "organizations:RemoveAccountFromOrganization",
+        "sts:AssumeRole"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

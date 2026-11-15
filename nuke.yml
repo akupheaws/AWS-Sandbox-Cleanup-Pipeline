@@ -1,0 +1,71 @@
+regions:
+  - all
+
+blocklist:
+  # Add real accounts where cleanup must never run, such as production.
+  # Leave the sample entry if this is your only account. AWS Nuke requires a blocklist.
+  - '999900001111'
+
+resource-types:
+  excludes:
+    - BudgetsBudget # Preserve spend alerts.
+    # Preserve IAM users, their credentials, groups, and customer-managed policies.
+    - IAMAccountSettingPasswordPolicy
+    - IAMGroup
+    - IAMGroupPolicy
+    - IAMGroupPolicyAttachment
+    - IAMLoginProfile
+    - IAMPolicy
+    - IAMServiceSpecificCredential
+    - IAMSigningCertificate
+    - IAMUser
+    - IAMUserAccessKey
+    - IAMUserGroupAttachment
+    - IAMUserHTTPSGitCredential
+    - IAMUserMFADevice
+    - IAMUserPolicy
+    - IAMUserPolicyAttachment
+    - IAMUserSSHPublicKey
+    - IAMVirtualMFADevice
+    - S3Object # S3Bucket empties its contents, including versions, during removal.
+
+settings:
+  CloudFormationStack:
+    DisableDeletionProtection: true
+  DynamoDBTable:
+    DisableDeletionProtection: true
+  EC2Image:
+    IncludeDisabled: true
+    IncludeDeprecated: true
+    DisableDeregistrationProtection: true
+  EC2Instance:
+    DisableDeletionProtection: true
+  RDSInstance:
+    DisableDeletionProtection: true
+
+accounts:
+  '430986758702': # Replace with the sandbox account ID and keep it quoted.
+    filters:
+      CloudFormationStack:
+        - property: Name
+          value: aws-sandbox-cleanup-bootstrap
+      IAMOpenIDConnectProvider:
+        - type: regex
+          value: '^arn:aws:iam::[0-9]{12}:oidc-provider/token\.actions\.githubusercontent\.com$'
+      IAMRole:
+        - GitHubSandboxCleanup
+        - OrganizationAccountAccessRole
+      IAMRolePolicy:
+        - property: 'role:RoleName'
+          value: GitHubSandboxCleanup
+        - property: 'role:RoleName'
+          value: OrganizationAccountAccessRole
+      IAMRolePolicyAttachment:
+        - property: RoleName
+          value: GitHubSandboxCleanup
+        - property: RoleName
+          value: OrganizationAccountAccessRole
+      IAMSAMLProvider:
+        - property: ARN
+          type: regex
+          value: '^arn:aws:iam::[0-9]{12}:saml-provider/AWSSSO_'

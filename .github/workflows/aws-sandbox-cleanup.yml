@@ -1,0 +1,88 @@
+name: AWS Sandbox Cleanup
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+      timezone: America/Chicago
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Cleanup mode
+        type: choice
+        options:
+          - dry-run
+          - delete
+        default: dry-run
+
+permissions: {}
+
+concurrency:
+  group: aws-sandbox-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: github.event_name == 'schedule' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_SANDBOX_ACCOUNT_ID: ${{ vars.AWS_SANDBOX_ACCOUNT_ID }}
+    steps:
+      - name: Select cleanup mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_MODE: ${{ inputs.mode }}
+          ENABLE_AWS_DELETION: ${{ vars.ENABLE_AWS_DELETION }}
+        run: |
+          if [[ ! "$AWS_SANDBOX_ACCOUNT_ID" =~ ^[0-9]{12}$ || "$AWS_SANDBOX_ACCOUNT_ID" == 111122223333 ]]; then
+            echo '::error::Set AWS_SANDBOX_ACCOUNT_ID to the 12-digit sandbox account ID.'
+            exit 1
+          fi
+
+          mode=dry-run
+          if [[ "$REQUESTED_MODE" == delete && "$ENABLE_AWS_DELETION" != true ]]; then
+            echo '::error::Set ENABLE_AWS_DELETION=true before requesting deletion.'
+            exit 1
+          fi
+          if [[ "$ENABLE_AWS_DELETION" == true && ( "$EVENT_NAME" == schedule || "$REQUESTED_MODE" == delete ) ]]; then
+            mode=delete
+          fi
+          printf 'value=%s\n' "$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Check out cleanup configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the verified AWS Nuke release
+        env:
+          AWS_NUKE_VERSION: v3.69.1
+          AWS_NUKE_SHA256: e906e646482269400d11545fdfef4be37708923f0bbaee31dc36224f01d40136
+        run: |
+          archive="aws-nuke-${AWS_NUKE_VERSION}-linux-amd64.tar.gz"
+          base_url="https://github.com/ekristen/aws-nuke/releases/download/${AWS_NUKE_VERSION}"
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 --max-time 180 \
+            --output "$archive" "$base_url/$archive"
+          printf '%s  %s\n' "$AWS_NUKE_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p aws-nuke-bin
+          tar -xzf "$archive" -C aws-nuke-bin aws-nuke
+          printf '%s/aws-nuke-bin\n' "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Assume the sandbox cleanup role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::${{ env.AWS_SANDBOX_ACCOUNT_ID }}:role/GitHubSandboxCleanup
+          role-session-name: SandboxCleanup-${{ github.run_id }}-${{ github.run_attempt }}
+          role-duration-seconds: 7200
+          allowed-account-ids: ${{ env.AWS_SANDBOX_ACCOUNT_ID }}
+
+      - name: Scan or clean the sandbox
+        env:
+          CLEANUP_MODE: ${{ steps.mode.outputs.value }}
+        run: bash scripts/cleanup.sh
