@@ -73,6 +73,12 @@ jobs:
           tar -xzf "$archive" -C aws-nuke-bin aws-nuke
           printf '%s/aws-nuke-bin\n' "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
+      - name: Validate cleanup controls and configuration
+        run: |
+          bash -n scripts/cleanup.sh
+          python3 -m unittest discover -s tests -v
+          aws-nuke explain-config --config nuke.yml --account-id "$AWS_SANDBOX_ACCOUNT_ID"
+
       - name: Assume the sandbox cleanup role
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:

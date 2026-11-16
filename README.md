@@ -1,6 +1,12 @@
 # Daily AWS sandbox cleanup
 
-Run a daily and on-demand AWS Nuke sweep in a dedicated commercial AWS sandbox. Set up GitHub OIDC and create demo resources in the AWS Management Console. Preview and run the cleanup from GitHub Actions.
+Run a daily and on-demand AWS Nuke sweep in a dedicated commercial AWS sandbox. GitHub Actions runs the job; no permanent server is required. It targets supported lab resources in `us-east-1`, `us-east-2`, `us-west-2`, and global services, while preserving the configured AWS defaults, IAM logins, budgets, and cleanup access.
+
+| Trigger | Behavior |
+| --- | --- |
+| Manual `dry-run` | Discover eligible resources and list them in the run summary without deleting them. |
+| Manual `delete` | Run a fresh preview, then delete eligible resources if discovery passes and `ENABLE_AWS_DELETION=true`. |
+| Daily at 3:17 a.m. Central | Preview while deletion is disabled; preview and delete once `ENABLE_AWS_DELETION=true`. |
 
 ## 1. Prepare the standalone AWS account
 
@@ -20,6 +26,8 @@ In macOS Finder, press **Command+Shift+Period** to reveal hidden files.
 - `.github/workflows/show-oidc-subject.yml`
 - `nuke.yml`
 - `scripts/cleanup.sh`
+- `scripts/cleanup_report.py`
+- `tests/test_cleanup.py`
 - `README.md`
 
 Keep the two JSON templates under `iam/` available for the AWS Console steps. You can also include the unchanged templates in the project repository.
@@ -33,7 +41,7 @@ Keep the two JSON templates under `iam/` available for the AWS Console steps. Yo
 **Create the role.**
 
 1. Go to **IAM → Roles → Create role → Custom trust policy**. Paste `iam/github-trust-policy.json` in the editor. Replace `SANDBOX_ACCOUNT_ID` with the 12-digit account ID and `GITHUB_OIDC_SUBJECT` with the exact subject from the GitHub run. Retain the JSON quotes and the `StringEquals` conditions.
-2. Choose **Next**, select the AWS managed **AdministratorAccess** policy, then **Next**. Enter `GitHubSandboxCleanup` as the role name and choose **Create role**. The broad permissions support scanning and removal across services in this disposable account. Both runnable workflows use this role.
+2. Choose **Next**, select the AWS managed **AdministratorAccess** policy, then **Next**. Enter `GitHubSandboxCleanup` as the role name and choose **Create role**. The broad permissions support scanning and removal across services in this disposable account. The cleanup workflow uses this role.
 3. Open the role. Under **Summary → Edit**, set **Maximum session duration** to **2 hours** (7,200 seconds) and save.
 4. On the role’s **Permissions** tab, choose **Add permissions → Create inline policy → JSON**. Paste `iam/cleanup-guardrails.json`. Choose **Next**, name it `ProtectSandboxAccess`, and create it. This policy explicitly denies selected changes to the role, OIDC provider and account controls.
 
@@ -60,8 +68,8 @@ Keep `ENABLE_AWS_DELETION=false` while setting up the demo. Use only disposable 
 
 ## 5. Preview, delete, and verify
 
-1. Open **Actions → AWS Sandbox Cleanup → Run workflow** on the default branch and select `dry-run`. Match the EC2 IDs, bucket and demo role, plus any queues you created, to the run logs. Look for the role under `global`. Confirm the cleanup role and GitHub provider are filtered. Review the full candidate list before enabling deletion.
-2. Edit `ENABLE_AWS_DELETION` to `true`. Run **AWS Sandbox Cleanup** manually with `delete`. The sweep can delete other eligible resources in the POC account.
+1. Open **Actions → AWS Sandbox Cleanup → Run workflow** on the default branch and select `dry-run`. Review the **Preview** candidate table in the run summary and match the EC2 IDs, bucket and demo role, plus any queues you created. Check the **Preserved default resources** table for the default VPCs and networking components. Look for the role under `global` in the logs. Confirm the cleanup role and GitHub provider are filtered. Review all candidates before enabling deletion.
+2. Edit `ENABLE_AWS_DELETION` to `true`. Run **AWS Sandbox Cleanup** manually with `delete`. It performs a fresh preview before deletion; unexpected discovery errors in that preview block deletion. It rescans when deleting, so it can also remove eligible resources created since an earlier preview. New errors during deletion can leave a partially cleaned account and fail the run. The **Deletion** summary reports the outcome.
 3. Refresh the AWS Console. Both EC2 IDs should show **Terminated** or disappear. The demo VPCs and subnets, the bucket, the demo role, and any queues should disappear from their service lists. SQS deletion can take up to 60 seconds. Run another `dry-run` to confirm OIDC still works. [EC2 termination](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-lifecycle.html) · [SQS deletion timing](https://docs.aws.amazon.com/cli/latest/reference/sqs/delete-queue.html)
 4. After the next 3:17 a.m. Central window, confirm a run triggered by `schedule` shows `delete` in its summary.
 
@@ -71,4 +79,18 @@ Run cleanup promptly after the demo because EC2 and EBS can incur charges while 
 
 The cron is `17 3 * * *` in `America/Chicago`. Before you enable deletion, it runs a dry run. Manual runs default to `dry-run`. To return future runs to preview mode, set `ENABLE_AWS_DELETION` to `false`. Use **Cancel workflow** for an active run. AWS can still complete requests it already accepted. [GitHub scheduling](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
 
-The sweep uses `regions: [all]` for enabled regions and supported global resources. It preserves IAM users, their login credentials, IAM groups and customer-managed IAM policies, along with GitHub access and AWS Budgets. It targets default VPCs and eligible IAM roles outside the filters. Resource support, AWS retention and disabled regions limit coverage. GitHub can delay or miss scheduled runs. Review Actions scan errors and remaining charges after deployment. [AWS Nuke coverage](https://aws-nuke.ekristen.dev/resources/) · [AWS region behavior](https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-regions.html)
+The sweep is limited to `global`, `us-east-1`, `us-east-2`, and `us-west-2`. Resources created by any engineer in this account are eligible; ownership tags or a particular IAM username are not required. Other regions are outside this cleanup scope.
+
+The preserved baseline includes the default VPC, default subnets, its internet gateway and attachment, default DHCP options, default security-group rules, and the primary Athena workgroup. AWS Nuke also skips built-in resources that AWS does not allow it to delete, such as main route tables, default network ACLs, default security groups, and predefined service configurations. An EC2 instance, custom security group, or other workload inside a default VPC is still eligible. This preserves default resources; it does not revert changes made to them. The explicit baseline rules are in `nuke.yml`; custom resources merely named `default` are not a universal exception. [AWS Nuke resource behavior](https://github.com/ekristen/aws-nuke/tree/v3.69.1/resources)
+
+IAM users, credentials, groups, customer-managed policies, password policy, the named access roles and their policies, the GitHub OIDC provider, the named bootstrap stack, SSO providers, and AWS Budgets remain protected by the configuration. AWS Nuke's default behavior also preserves service-linked and SSO roles. Other eligible IAM roles are removed. A stack filter does not automatically protect every child resource from direct cleanup; baseline resources need their own applicable filters.
+
+Engineer-created CloudWatch log groups and Resource Explorer indexes/views are eligible; the configuration does not preserve all resources in those categories. S3 buckets and their contents, including object versions, are also eligible.
+
+Some service APIs return account-enrollment or subscription errors even when there are no resources to clean. `scripts/cleanup_report.py` recognizes specific discovery responses for Cloud9, CloudSearch, Cloud Directory, legacy Amazon ML, Timestream for LiveAnalytics, disabled Glue development endpoints, Shield, and Firewall Manager. It also identifies the absent Q Business endpoint and the specific unavailable Bedrock customization operations in Ohio. These checks remain visible as warnings and as a table of unavailable service checks in the run summary; they are not reported as deleted resources. Each scan still attempts them, so services that become available can be cleaned. Other permission, network, discovery, queue-overflow, and deletion failures fail the job. A nonzero AWS Nuke exit code always fails it.
+
+Retired service handlers, including Lex V1, are excluded. The pinned AWS Nuke release still calls the retired AgentCore registry preview API, so `BedrockAgentCoreRegistry` and `BedrockAgentCoreRegistryRecord` are excluded too. The replacement **AWS Agent Registry is outside this release's cleanup coverage**. [Lex V1 retirement](https://docs.aws.amazon.com/lex/latest/dg/lex-dg.pdf) · [Registry API migration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/registry-iam-permissions.html) · [Q Business regions](https://docs.aws.amazon.com/general/latest/gr/amazonq.html)
+
+Resource support, AWS retention, permissions, and the configured regions limit coverage. GitHub can delay or miss scheduled runs. Review the run summary, errors, and remaining charges after deployment. [AWS Nuke coverage](https://aws-nuke.ekristen.dev/resources/)
+
+Run the local checks with `bash -n scripts/cleanup.sh` and `python3 -m unittest discover -s tests -v`. The workflow runs these checks and parses `nuke.yml` with `aws-nuke explain-config --account-id "$AWS_SANDBOX_ACCOUNT_ID" --config nuke.yml` before assuming the cleanup role.

@@ -1,5 +1,9 @@
 regions:
-  - all
+  # Scan the three approved lab regions and account-wide services such as IAM.
+  - global
+  - us-east-1
+  - us-east-2
+  - us-west-2
 
 blocklist:
   # Add real accounts where cleanup must never run, such as production.
@@ -28,6 +32,28 @@ resource-types:
     - IAMUserSSHPublicKey
     - IAMVirtualMFADevice
     - S3Object # S3Bucket empties its contents, including versions, during removal.
+    # AWS has shut down these services.
+    - CodeStarProject
+    - ElasticTranscoderPipeline
+    - ElasticTranscoderPreset
+    - InspectorAssessmentRun
+    - InspectorAssessmentTarget
+    - InspectorAssessmentTemplate
+    - LexBot
+    - LexIntent
+    - LexModelBuildingServiceBotAlias
+    - LexSlotType
+    - OpsWorksApp
+    - OpsWorksInstance
+    - OpsWorksLayer
+    - OpsWorksUserProfile
+    - OpsWorksCMBackup
+    - OpsWorksCMServer
+    - OpsWorksCMServerState
+    # These handlers call the retired AgentCore registry preview API.
+    # The replacement AWS Agent Registry is not supported by this release.
+    - BedrockAgentCoreRegistry
+    - BedrockAgentCoreRegistryRecord
 
 settings:
   CloudFormationStack:
@@ -44,7 +70,7 @@ settings:
     DisableDeletionProtection: true
 
 accounts:
-  '430986758702': # Replace with the sandbox account ID and keep it quoted.
+  '430986758702': # Must match the GitHub AWS_SANDBOX_ACCOUNT_ID variable.
     filters:
       CloudFormationStack:
         - property: Name
