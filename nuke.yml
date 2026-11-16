@@ -1,5 +1,8 @@
 regions:
-  - all
+  # Match the approved regions in iam/developer-region-guardrails.json.
+  - us-east-1
+  - us-east-2
+  - us-west-2
 
 blocklist:
   # Add real accounts where cleanup must never run, such as production.
@@ -28,6 +31,20 @@ resource-types:
     - IAMUserSSHPublicKey
     - IAMVirtualMFADevice
     - S3Object # S3Bucket empties its contents, including versions, during removal.
+    # AWS has shut down these services.
+    - CodeStarProject
+    - ElasticTranscoderPipeline
+    - ElasticTranscoderPreset
+    - InspectorAssessmentRun
+    - InspectorAssessmentTarget
+    - InspectorAssessmentTemplate
+    - OpsWorksApp
+    - OpsWorksInstance
+    - OpsWorksLayer
+    - OpsWorksUserProfile
+    - OpsWorksCMBackup
+    - OpsWorksCMServer
+    - OpsWorksCMServerState
 
 settings:
   CloudFormationStack:
@@ -71,6 +88,16 @@ accounts:
       AthenaWorkGroup:
         - property: Name
           value: primary
+      # Preserve account logging and resource inventory.
+      CloudWatchLogsLogGroup:
+        - type: regex
+          value: '.*'
+      ResourceExplorer2Index:
+        - type: regex
+          value: '.*'
+      ResourceExplorer2View:
+        - type: regex
+          value: '.*'
       IAMOpenIDConnectProvider:
         - type: regex
           value: '^arn:aws:iam::[0-9]{12}:oidc-provider/token\.actions\.githubusercontent\.com$'
